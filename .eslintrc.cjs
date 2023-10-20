@@ -2,7 +2,7 @@ module.exports = {
   env: {
     es2021: true
   },
-  extends: 'standard',
+  extends: ['standard', '@scriptable-ios'],
   overrides: [
     {
       env: {

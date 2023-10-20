@@ -1,19 +1,21 @@
 // Variables used by Scriptable.
 // These must be at the very top of the file. Do not edit.
-// icon-color: gray; icon-glyph: magic;
+// icon-color: pink; icon-glyph: magic;
+
+const SHOW_AMOUNT = 6
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wen', 'Thu', 'Fri', 'Sat']
+
 const timeFormatter = new Intl.DateTimeFormat('en-US', { timeStyle: 'short' })
 
-const getToday = () => {
+const getMonthString = (n) => {
   const date = new Date()
-  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}T00:00:00`
+  return `${date.getFullYear()}-${date.getMonth() + n}-${date.getDate()}T00:00:00`
 }
 
 // Variables used by Scriptable.
 // These must be at the very top of the file. Do not edit.
 // icon-color: yellow; icon-glyph: magic;
 const widget = await getWidget()
-widget.setPadding(10, 20, 10, 20)
 
 if (config.runsInWidget) {
   // The script runs inside a widget, so we pass our instance of ListWidget to be shown inside the widget on the Home Screen.
@@ -25,53 +27,6 @@ if (config.runsInWidget) {
 // Calling Script.complete() signals to Scriptable that the script have finished running.
 // This can speed up the execution, in particular when running the script from Shortcuts or using Siri.
 Script.complete()
-
-async function getWidget() {
-  // Setup widget
-  const widget = new ListWidget()
-  // widget.backgroundColor = new Color('#D3D3D3', 1)
-  widget.backgroundColor = Color.white()
-
-  const schedule = await getSchedule()
-  const today = getToday()
-  console.log(today)
-  const todayIndex = schedule.findIndex(item => item.LocalDate === today)
-  const nextShifts = schedule.slice(todayIndex, todayIndex + 6)
-
-  for (const shift of nextShifts) {
-    const shiftStack = widget.addStack()
-
-    const dateStack = shiftStack.addStack()
-    dateStack.size = new Size(70, 0)
-
-    const day = dateStack.addText(DAYS_OF_WEEK[shift.Start.getDay()])
-    day.textColor = Color.black()
-    day.font = Font.boldSystemFont(18)
-
-    dateStack.addSpacer()
-
-    const date = dateStack.addText(shift.Start.getDate().toString())
-    date.textColor = Color.black()
-    date.font = Font.boldSystemFont(18)
-
-    if (shift.emoji) {
-      shiftStack.addSpacer(10)
-      const emoji = shiftStack.addText(shift.emoji)
-      emoji.font = Font.footnote()
-    }
-
-    shiftStack.addSpacer()
-
-    let start = timeFormatter.format(shift.Start)
-    start = start.substring(0, start.length - 3)
-    let end = timeFormatter.format(shift.End)
-    end = end.substring(0, end.length - 3)
-    const startEnd = shiftStack.addText(`${start} - ${end}`)
-    startEnd.textColor = Color.black()
-  }
-
-  return widget
-}
 
 async function makeRequest({
   url,
@@ -86,7 +41,30 @@ async function makeRequest({
   return req.loadString()
 }
 
-async function getSchedule() {
+/**
+ * @typedef {Object} RawScheduleEvent
+ * @property {String} LocalDate
+ * @property {Number} StoreID
+ * @property {String} StoreCode
+ * @property {String} StoreCodeName
+ * @property {Number} AcrivityID
+ * @property {Number} Start
+ * @property {Number} End
+ * @property {null} DepartmentID
+ *
+ * @typedef {Object} ScheduleEvent
+ * @property {Date} date
+ * @property {Array<RawScheduleEvent>} events
+ * @property {Boolean} off
+ * @property {Date | null} start
+ * @property {Date | null} end
+ * @property {String} extra
+ */
+
+/**
+ * @returns {Promise<Array<RawScheduleEvent>>}
+ */
+async function getRawSchedule() {
   // Login
   const loginRes = await makeRequest({
     url: 'https://sf.lush.com/storeforce/ess/services/FoundationService.svc/Login',
@@ -113,83 +91,173 @@ async function getSchedule() {
 
   const login = JSON.parse(JSON.parse(loginRes))
 
-  const scheduleRes = await makeRequest({
-    url: 'https://sf.lush.com/storeforce/ess/services/ScheduleService.svc/GetMonthlySchedule',
-    method: 'POST',
-    headers: {
-      'accept-language': 'en-US,en;q=0.9,de;q=0.8,la;q=0.7',
-      'content-type': 'application/json; charset=UTF-8',
-      'sec-ch-ua': '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"macOS"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'x-requested-with': 'XMLHttpRequest',
-      Referer: 'https://sf.lush.com/storeforce/ess/',
-      'Referrer-Policy': 'strict-origin-when-cross-origin'
-    },
-    body: JSON.stringify({
-      session: login.Session,
-      datestring: `"${getToday()}"`,
-      culture: 'en-US'
+  const makeMonthlyScheduleReq = async (dateString) => {
+    return makeRequest({
+      url: 'https://sf.lush.com/storeforce/ess/services/ScheduleService.svc/GetMonthlySchedule',
+      method: 'POST',
+      headers: {
+        'accept-language': 'en-US,en;q=0.9,de;q=0.8,la;q=0.7',
+        'content-type': 'application/json; charset=UTF-8',
+        'sec-ch-ua': '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"macOS"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'x-requested-with': 'XMLHttpRequest',
+        Referer: 'https://sf.lush.com/storeforce/ess/',
+        'Referrer-Policy': 'strict-origin-when-cross-origin'
+      },
+      body: JSON.stringify({
+        session: login.Session,
+        datestring: dateString,
+        culture: 'en-US'
+      })
     })
-  })
+  }
 
-  const schedule = JSON.parse(JSON.parse(scheduleRes))
+  const payload = []
 
-  const processedSchedule = []
+  payload.push(...JSON.parse(JSON.parse(await makeMonthlyScheduleReq(`"${getMonthString(1)}"`))))
 
-  for (const item of schedule) {
-    // Check to see if `LocalDate` entry exists
-    const index = processedSchedule.findIndex(x => x.LocalDate === item.LocalDate)
+  const today = new Date()
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+  const diffDays = Math.ceil(Math.abs(nextMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDays <= SHOW_AMOUNT) {
+    payload.push(...JSON.parse(JSON.parse(await makeMonthlyScheduleReq(`"${getMonthString(2)}"`))))
+  }
+
+  return payload
+}
+
+/**
+ * @returns {Promise<Array<ScheduleEvent>>}
+ */
+async function getSchedule() {
+  const raw = await getRawSchedule()
+
+  /** @type {Array<ScheduleEvent>} */
+  const days = []
+
+  for (const item of raw) {
+    const index = days.findIndex(day => day.date.toDateString() === new Date(item.LocalDate).toDateString())
 
     if (index > -1) {
-      processedSchedule[index].events.push(item)
+      days[index].events.push(item)
     } else {
-      processedSchedule.push({
-        LocalDate: item.LocalDate,
+      days.push({
+        date: new Date(item.LocalDate),
         events: [item],
-        Start: new Date(),
-        End: new Date(),
-        emoji: null
+        off: false,
+        start: null,
+        end: null,
+        extra: ''
       })
     }
   }
 
-  for (const item of processedSchedule) {
-    // Set start and end times
+  for (const day of days) {
     let minStart = Infinity
     let maxEnd = 0
 
-    for (const event of item.events) {
+    for (const event of day.events) {
       if (event.Start < minStart) minStart = event.Start
       if (event.End > maxEnd) maxEnd = event.End
     }
 
-    const temp = new Date(`${item.LocalDate}`)
-    const startTime = new Date(temp)
-    const endTime = new Date(temp)
-    startTime.setMinutes(temp.getMinutes() + minStart)
-    endTime.setMinutes(temp.getMinutes() + maxEnd)
+    const start = new Date(day.date)
+    start.setMinutes(minStart)
+    const end = new Date(maxEnd)
+    end.setMinutes(day.end)
 
-    item.Start = startTime
-    item.End = endTime
+    day.start = start
+    day.end = end
 
     /**
      * if shift starts between 5:00 - 10:00 = opening
      * if shift ends between 8:00 - 11:00 = closing
      */
-
-    const startHours = startTime.getHours()
-    const endHours = endTime.getHours()
+    const startHours = start.getHours()
+    const endHours = end.getHours()
 
     if (startHours >= 5 && startHours <= 10) {
-      item.emoji = '☀️'
+      day.extra = '☀️'
     } else if (endHours >= 20 && endHours <= 23) {
-      item.emoji = '🌚'
+      day.extra = '🌚'
     }
   }
 
-  return processedSchedule
+  /** @type {Array<ScheduleEvent>} */
+  const payload = []
+
+  for (let i = 0; i < SHOW_AMOUNT; i++) {
+    const date = new Date(new Date().setDate(new Date().getDate() + i))
+    const index = days.findIndex(x => x.date.toDateString() === date.toDateString())
+
+    if (index > -1) {
+      payload.push(days[index])
+    } else {
+      payload.push({
+        date,
+        events: [],
+        off: true,
+        start: null,
+        end: null,
+        extra: ''
+      })
+    }
+  }
+
+  return payload
+}
+
+async function getWidget() {
+  // Setup widget
+  const wig = new ListWidget()
+  // widget.backgroundColor = new Color('#D3D3D3', 1)
+  wig.backgroundColor = Color.white()
+
+  const schedule = await getSchedule()
+
+  for (const shift of schedule) {
+    const shiftStack = wig.addStack()
+
+    const dateStack = shiftStack.addStack()
+    dateStack.size = new Size(70, 0)
+
+    const day = dateStack.addText(DAYS_OF_WEEK[shift.date.getDay()])
+    day.textColor = Color.black()
+    day.font = Font.boldSystemFont(18)
+
+    dateStack.addSpacer()
+
+    const date = dateStack.addText(shift.date.getDate().toString())
+    date.textColor = Color.black()
+    date.font = Font.boldSystemFont(18)
+
+    if (shift.extra) {
+      shiftStack.addSpacer(10)
+      const extra = shiftStack.addText(shift.extra)
+      extra.centerAlignText()
+      extra.font = Font.footnote()
+    }
+
+    shiftStack.addSpacer()
+
+    if (shift.off) {
+      const off = shiftStack.addText('Off!')
+      off.textColor = Color.black()
+    } else {
+      let start = timeFormatter.format(shift.start)
+      start = start.substring(0, start.length - 3)
+      let end = timeFormatter.format(shift.end)
+      end = end.substring(0, end.length - 3)
+
+      const startEnd = shiftStack.addText(`${start} - ${end}`)
+      startEnd.textColor = Color.black()
+    }
+  }
+
+  return wig
 }
