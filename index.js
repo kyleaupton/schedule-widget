@@ -12,9 +12,6 @@ const getMonthString = (n) => {
   return `${date.getFullYear()}-${date.getMonth() + n}-${date.getDate()}T00:00:00`
 }
 
-// Variables used by Scriptable.
-// These must be at the very top of the file. Do not edit.
-// icon-color: yellow; icon-glyph: magic;
 const widget = await getWidget()
 
 if (config.runsInWidget) {
@@ -168,8 +165,8 @@ async function getSchedule() {
 
     const start = new Date(day.date)
     start.setMinutes(minStart)
-    const end = new Date(maxEnd)
-    end.setMinutes(day.end)
+    const end = new Date(day.date)
+    end.setMinutes(maxEnd)
 
     day.start = start
     day.end = end
@@ -184,7 +181,7 @@ async function getSchedule() {
     if (startHours >= 5 && startHours <= 10) {
       day.extra = '☀️'
     } else if (endHours >= 20 && endHours <= 23) {
-      day.extra = '🌚'
+      day.extra = '🌜'
     }
   }
 
@@ -214,50 +211,59 @@ async function getSchedule() {
 
 async function getWidget() {
   // Setup widget
-  const wig = new ListWidget()
-  // widget.backgroundColor = new Color('#D3D3D3', 1)
-  wig.backgroundColor = Color.white()
+  const lw = new ListWidget()
+
+  const darkBlue = new Color('#333d72', 1)
+  const darkBlueLighter = new Color('#333d72', 0.6)
+
+  const gradient = new LinearGradient()
+  gradient.colors = [Color.dynamic(Color.white(), darkBlueLighter), Color.dynamic(Color.white(), darkBlue)]
+  gradient.locations = [0, 1]
+
+  lw.backgroundGradient = gradient
+  lw.spacing = 1
 
   const schedule = await getSchedule()
 
-  for (const shift of schedule) {
-    const shiftStack = wig.addStack()
+  for (let i = 0; i < schedule.length; i++) {
+    const shift = schedule[i]
+    const shiftStack = lw.addStack()
 
     const dateStack = shiftStack.addStack()
     dateStack.size = new Size(70, 0)
 
     const day = dateStack.addText(DAYS_OF_WEEK[shift.date.getDay()])
-    day.textColor = Color.black()
     day.font = Font.boldSystemFont(18)
 
     dateStack.addSpacer()
 
     const date = dateStack.addText(shift.date.getDate().toString())
-    date.textColor = Color.black()
     date.font = Font.boldSystemFont(18)
 
-    if (shift.extra) {
-      shiftStack.addSpacer(10)
-      const extra = shiftStack.addText(shift.extra)
-      extra.centerAlignText()
-      extra.font = Font.footnote()
-    }
-
-    shiftStack.addSpacer()
+    shiftStack.addSpacer(20)
 
     if (shift.off) {
-      const off = shiftStack.addText('Off!')
-      off.textColor = Color.black()
+      shiftStack.addText('Off')
     } else {
       let start = timeFormatter.format(shift.start)
       start = start.substring(0, start.length - 3)
       let end = timeFormatter.format(shift.end)
       end = end.substring(0, end.length - 3)
 
-      const startEnd = shiftStack.addText(`${start} - ${end}`)
-      startEnd.textColor = Color.black()
+      shiftStack.addText(`${start} - ${end}`)
+    }
+
+    shiftStack.addSpacer()
+
+    if (i === 0) {
+      // shiftStack.addText('👈')
+      // shiftStack.addText('🌜')
+    }
+
+    if (shift.extra) {
+      shiftStack.addText(shift.extra)
     }
   }
 
-  return wig
+  return lw
 }
