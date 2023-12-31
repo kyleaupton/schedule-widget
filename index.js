@@ -9,7 +9,16 @@ const timeFormatter = new Intl.DateTimeFormat('en-US', { timeStyle: 'short' })
 
 const getMonthString = (n) => {
   const date = new Date()
-  return `${date.getFullYear()}-${date.getMonth() + n}-${date.getDate()}T00:00:00`
+
+  let year = date.getFullYear()
+  let month = date.getMonth() + n
+
+  if (month === 13) {
+    month = 1
+    year += 1
+  }
+
+  return `${year}-${month}-1T00:00:00`
 }
 
 const widget = await getWidget()
